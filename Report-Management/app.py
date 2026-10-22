@@ -11,7 +11,7 @@ DEFAULT_PARAMS = os.path.join(BASE_DIR, "report_parameters.md")
 st.set_page_config(page_title="JMeter Report Generator", layout="centered")
 
 # --------------------------------------------------------------------------- #
-# Tema Neo Brutalism (Didominasi Biru, Border Hitam, Hard Shadow, Space Grotesk)
+# Tema Neo Brutalism (CSS Diperbaiki agar Komponen Tidak Bentrok)
 # --------------------------------------------------------------------------- #
 st.markdown(
     """
@@ -28,7 +28,7 @@ st.markdown(
           line-height: 1.5 !important;
       }
 
-      /* Sembunyikan elemen bawaan Streamlit yang tidak perlu */
+      /* Sembunyikan elemen bawaan Streamlit */
       #MainMenu, footer, .stAppDeployButton, [data-testid="stToolbar"] {display: none !important;}
       [data-testid="stHeader"] {background: transparent;}
       .block-container {padding-top: 3rem; padding-bottom: 4rem; max-width: 740px;}
@@ -115,21 +115,19 @@ st.markdown(
           font-size: 0.95rem !important;
       }
 
-      /* PERBAIKAN FILE UPLOADER (Mencegah teks bertumpuk) */
+      /* ------------------------------------------------------------------- */
+      /* PERBAIKAN 1: FILE UPLOADER (Reset Total Struktur Internal BaseWeb)  */
+      /* ------------------------------------------------------------------- */
       [data-testid="stFileUploaderDropzone"] { 
           border: 3px dashed #000000 !important; 
           border-radius: 6px !important;
           box-shadow: 4px 4px 0px #000000 !important;
           background-color: #F0F4FF !important;
-          padding: 1.5rem !important;
+          padding: 1rem !important;
       }
 
-      /* Reset elemen internal uploader agar tidak saling menimpa */
-      [data-testid="stFileUploaderDropzone"] section {
-          padding: 0 !important;
-      }
-
-      [data-testid="stFileUploaderDropzone"] button {
+      /* Biarkan tombol internal uploader ter-style alami tanpa mengganggu tata letak flexbox */
+      [data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {
           border: 2px solid #000000 !important;
           box-shadow: 2px 2px 0px #000000 !important;
           background-color: #FFFFFF !important;
@@ -137,12 +135,42 @@ st.markdown(
           font-weight: 700 !important;
           border-radius: 4px !important;
           padding: 0.4rem 0.8rem !important;
+          margin-right: 0.8rem !important;
       }
 
-      [data-testid="stFileUploaderDropzone"] span, 
-      [data-testid="stFileUploaderDropzone"] small {
+      /* Pastikan teks keterangan ukuran file bersih dan terbaca */
+      [data-testid="stFileUploaderDropzone"] [data-testid="stMarkdownContainer"] p,
+      [data-testid="stFileUploaderDropzone"] span {
           color: #4B5563 !important;
           font-weight: 600 !important;
+          font-size: 0.85rem !important;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* PERBAIKAN 2: EXPANDER (Memperbaiki Teks Header & Panah yang Hilang) */
+      /* ------------------------------------------------------------------- */
+      [data-testid="stExpander"] { 
+          border: 3px solid #000000 !important; 
+          border-radius: 6px !important; 
+          box-shadow: 4px 4px 0px #000000 !important; 
+          background-color: #FFFFFF !important; 
+          overflow: hidden;
+      }
+
+      /* Warna header expander dan ikonnnya */
+      [data-testid="stExpander"] details summary {
+          background-color: #FAFAFA !important;
+          color: #000000 !important;
+          font-weight: 700 !important;
+          border-bottom: 2px solid #000000 !important;
+          padding: 0.8rem 1rem !important;
+      }
+
+      [data-testid="stExpander"] details summary p,
+      [data-testid="stExpander"] details summary svg {
+          color: #000000 !important;
+          fill: #000000 !important;
+          font-weight: 700 !important;
       }
 
       /* Tombol Utama (Primary) */
@@ -172,13 +200,7 @@ st.markdown(
           transform: none !important;
       }
 
-      /* Metrics & Expander */
-      [data-testid="stExpander"] { 
-          border: 3px solid #000 !important; 
-          border-radius: 6px !important; 
-          box-shadow: 4px 4px 0px #000 !important; 
-          background-color: #FAFAFA !important; 
-      }
+      /* Metrics */
       [data-testid="stMetric"] { 
           background: #E0E7FF; 
           border: 3px solid #000; 
