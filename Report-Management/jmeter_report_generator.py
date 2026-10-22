@@ -516,6 +516,42 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
             key = str(self.llm.get("groq_api_key", "")).strip()
         return key
 
+    def _pick_groq_model(self, key, exclude=None):
+        """Ambil daftar model aktif langsung dari Groq API untuk menghindari error 404."""
+        exclude = set(exclude or [])
+        base = (self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions")
+        models_url = base.rsplit("/chat/completions", 1)[0] + "/models"
+        try:
+            r = requests.get(models_url, headers={"Authorization": f"Bearer {key}"}, timeout=15)
+            if r.status_code == 200:
+                ids = [m.get("id", "") for m in r.json().get("data", []) if m.get("active", True)]
+            else:
+                ids = []
+        except Exception:
+            ids = []
+
+        prefs = [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "mixtral-8x7b-32768",
+            "qwen-2.5-coder-32b",
+            "deepseek-r1-distill-llama-70b"
+        ]
+        
+        custom_prefs = as_list(self.llm.get("groq_fallback_models", ""))
+        if custom_prefs:
+            prefs = custom_prefs + prefs
+
+        for cand in prefs:
+            if cand in ids and cand not in exclude:
+                return cand
+        
+        skip = ("whisper", "guard", "tts", "orpheus", "safeguard", "compound", "embed")
+        generic = [i for i in ids if i and i not in exclude and not any(x in i for x in skip)]
+        return generic[0] if generic else "llama-3.1-8b-instant"
+
     def llm_recommendations(self, provider=None):
         self.llm_error, self.llm_used = None, None
         if not self.llm.get("enabled"):
@@ -579,10 +615,44 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     self.llm_error = "GROQ_API_KEY tidak ditemukan. Isi di secrets.toml atau environment variable."
                     print(f"[!] {self.llm_error}")
                     return None
-                model = self.llm.get("groq_model") or "llama-3.3-70b-versatile"
+                
                 url = self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
-                body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
+                
+                model = self._pick_groq_model(key)
+                tried = {model}
+
+                print(f"[*] Menghubungi Groq Cloud ({model})...")
+                for _ in range(3):
+                    body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
+                    res = requests.post(url, headers=headers, json=body, timeout=timeout)
+                    
+                    if res.status_code == 429:
+                        time.sleep(5)
+                        continue
+                        
+                    if res.status_code in (400, 404) and "model_not_found" in res.text:
+                        alt = self._pick_groq_model(key, exclude=tried)
+                        if alt and alt not in tried:
+                            print(f"[!] Model '{model}' gagal (404), mencoba '{alt}'...")
+                            model = alt
+                            tried.add(alt)
+                            continue
+                    break
+
+                if res.status_code != 200:
+                    self.llm_error = f"Groq HTTP {res.status_code}: {res.text[:200]}"
+                    print(f"[!] {self.llm_error}")
+                    return None
+
+                data = res.json()
+                choice = data.get("choices", [{}])[0]
+                content = choice.get("message", {}).get("content", "")
+                content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
+
+                self.llm_used = f"Groq / {model}"
+                print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
+                return content
 
             # --- PROVIDER 3: OLLAMA ---
             else:
@@ -595,22 +665,22 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                 else:
                     body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
 
-            print(f"[*] Menghubungi LLM via {provider.upper()} ({model}) ...")
-            res = requests.post(url, headers=headers, json=body, timeout=timeout)
+                print(f"[*] Menghubungi Ollama ({model}) ...")
+                res = requests.post(url, headers=headers, json=body, timeout=timeout)
 
-            if res.status_code != 200:
-                self.llm_error = f"{provider} HTTP {res.status_code}: {res.text[:300]}"
-                print(f"[!] {self.llm_error}")
-                return None
+                if res.status_code != 200:
+                    self.llm_error = f"Ollama HTTP {res.status_code}: {res.text[:200]}"
+                    print(f"[!] {self.llm_error}")
+                    return None
 
-            data = res.json()
-            choice = data.get("choices", [{}])[0]
-            content = data.get("response") or choice.get("message", {}).get("content", "")
-            content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
+                data = res.json()
+                choice = data.get("choices", [{}])[0]
+                content = data.get("response") or choice.get("message", {}).get("content", "")
+                content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
 
-            self.llm_used = f"{provider.capitalize()} / {model}"
-            print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
-            return content
+                self.llm_used = f"Ollama / {model}"
+                print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
+                return content
 
         except Exception as exc:  # noqa: BLE001
             self.llm_error = f"{provider}: {exc}"
