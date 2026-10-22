@@ -90,10 +90,15 @@ if uploaded_jtl and st.button("🚀 Proses & Buat Laporan", type="primary"):
                 # 3. OVERRIDE PARAMETER DARI INPUT STREAMLIT (Membuat Nilai Dinamis)
                 if input_app_name:
                     params.meta["project_name"] = input_app_name
+
                 if input_qa_name:
                     params.meta["prepared_by"] = input_qa_name
+
                 if input_max_p95:
-                    params.sla["max_p95_ms"] = int(input_max_p95)
+                    # Mengakses langsung dictionary sections SLA
+                    if "SLA" not in params.sections:
+                        params.sections["SLA"] = {"kv": {}, "items": [], "text": ""}
+                    params.sections["SLA"]["kv"]["max_p95_ms"] = int(input_max_p95)
 
                 # 4. Inisialisasi Generator
                 use_llm = True if "Playbook" not in llm_option else False
