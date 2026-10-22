@@ -11,43 +11,108 @@ DEFAULT_PARAMS = os.path.join(BASE_DIR, "report_parameters.md")
 st.set_page_config(page_title="JMeter Report Generator", page_icon="📊", layout="centered")
 
 # --------------------------------------------------------------------------- #
-# Tema minimalis (CSS ringan di atas theme pada .streamlit/config.toml)
+# Tema Neo Brutalism (Didominasi Biru, Border Hitam, Hard Shadow, Space Grotesk)
 # --------------------------------------------------------------------------- #
 st.markdown(
     """
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+
+      /* Global Typography */
+      html, body, [class*="css"], .stMarkdown {
+          font-family: 'Space Grotesk', sans-serif !important;
+          color: #000000;
+      }
+
+      /* Sembunyikan elemen bawaan Streamlit yang tidak perlu */
       #MainMenu, footer, .stAppDeployButton, [data-testid="stToolbar"] {display: none !important;}
       [data-testid="stHeader"] {background: transparent;}
-      .block-container {padding-top: 3rem; padding-bottom: 4rem; max-width: 720px;}
+      .block-container {padding-top: 3rem; padding-bottom: 4rem; max-width: 740px;}
 
-      .eyebrow {font-size: .75rem; letter-spacing: .12em; text-transform: uppercase; color: #6B7280; margin-bottom: .25rem;}
-      h1 {font-size: 1.9rem !important; font-weight: 650 !important; letter-spacing: -.02em; padding: 0 0 .25rem 0 !important;}
-      .lead {color: #6B7280; font-size: .98rem; margin-bottom: 2rem;}
-      .section {font-size: .72rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-                color: #6B7280; margin: 1.8rem 0 .5rem 0;}
+      /* Header & Teks */
+      .eyebrow {font-size: 1rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #0055FF; margin-bottom: 0px;}
+      h1 {font-family: 'Space Grotesk', sans-serif !important; font-size: 2.8rem !important; font-weight: 800 !important; color: #000 !important; text-transform: uppercase; border-bottom: 5px solid #000; padding-bottom: 0.5rem; margin-bottom: 1.5rem; letter-spacing: -1px;}
+      .lead {font-size: 1.05rem; font-weight: 600; background: #E0E7FF; padding: 1rem 1.2rem; border: 3px solid #000; box-shadow: 4px 4px 0px #000; border-radius: 6px; margin-bottom: 2rem;}
+      
+      /* Section Badge */
+      .section {font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #FFF; background-color: #0055FF; display: inline-block; padding: 0.4rem 1rem; border: 3px solid #000; box-shadow: 3px 3px 0px #000; border-radius: 6px; margin: 2rem 0 1rem 0;}
 
-      [data-testid="stFileUploaderDropzone"] {border: 1px dashed #CBD2D9; border-radius: 12px; background: #FAFBFC;}
-      [data-testid="stExpander"] {border: 1px solid #E5E7EB; border-radius: 12px; box-shadow: none;}
-      [data-baseweb="input"], [data-baseweb="select"] > div {border-radius: 10px;}
+      /* Input, Expander, File Uploader */
+      [data-testid="stFileUploaderDropzone"],
+      [data-testid="stExpander"],
+      [data-baseweb="input"], [data-baseweb="select"] > div,
+      [data-baseweb="number-input"] > div {
+          border: 3px solid #000 !important;
+          border-radius: 6px !important;
+          box-shadow: 4px 4px 0px #000 !important;
+          background-color: #FFFFFF !important;
+          transition: all 0.2s ease;
+      }
+      [data-testid="stFileUploaderDropzone"] { border-style: dashed !important; background-color: #F0F4FF !important;}
+      [data-testid="stExpander"] { background-color: #FAFAFA !important; }
+      
+      /* Reset hover state for inputs so shadow doesn't disappear weirdly */
+      [data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within { box-shadow: 4px 4px 0px #0055FF !important; }
 
+      /* Buttons */
       [data-testid="stElementContainer"]:has([data-testid="stButton"]),
       [data-testid="stElementContainer"]:has([data-testid="stDownloadButton"]) {width: 100% !important;}
       [data-testid="stButton"], [data-testid="stDownloadButton"] {width: 100%;}
-      [data-testid="stButton"] button, [data-testid="stDownloadButton"] button {width: 100%; border-radius: 10px; padding: .6rem 1rem; font-weight: 600;}
-      [data-testid="stRadio"] {margin-bottom: -.4rem;}
-      .muted {margin-bottom: .9rem;}
+      [data-testid="stButton"] button, [data-testid="stDownloadButton"] button {
+          width: 100%; 
+          border: 3px solid #000 !important; 
+          border-radius: 6px !important; 
+          box-shadow: 5px 5px 0px #000 !important; 
+          background-color: #0055FF !important; 
+          color: #FFF !important; 
+          font-family: 'Space Grotesk', sans-serif !important;
+          font-weight: 700 !important; 
+          font-size: 1.1rem;
+          text-transform: uppercase;
+          padding: 0.8rem 1rem;
+          transition: all 0.1s ease-in-out !important;
+      }
+      [data-testid="stButton"] button:hover, [data-testid="stDownloadButton"] button:hover {
+          transform: translate(3px, 3px) !important;
+          box-shadow: 2px 2px 0px #000 !important;
+          color: #FFF !important;
+      }
+      [data-testid="stButton"] button:disabled {
+          background-color: #E5E7EB !important;
+          color: #9CA3AF !important;
+          box-shadow: none !important;
+          transform: none !important;
+          border-color: #9CA3AF !important;
+      }
 
-      [data-testid="stMetric"] {background: #F6F7F9; border: 1px solid #E5E7EB; border-radius: 12px; padding: 14px 16px;}
-      [data-testid="stMetricLabel"] p {font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: #6B7280;}
-      [data-testid="stMetricValue"] {font-size: 1.45rem; font-weight: 650;}
+      /* Radio Buttons */
+      [data-testid="stRadio"] {margin-bottom: -0.4rem; font-weight: 600;}
 
-      .pill {display: inline-block; padding: .2rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 600;}
-      .pill.ok {background: #E6F4EA; color: #1E6B3A;}  .pill.bad {background: #FDECEA; color: #B42318;}
-      .row {display: flex; gap: .75rem; align-items: baseline; padding: .55rem 0; border-bottom: 1px solid #EEF0F3; font-size: .92rem;}
-      .row:last-child {border-bottom: none; margin-bottom: .8rem;}
-      .sev {flex: 0 0 4.6rem; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;}
-      .sev.Critical {color: #B42318;} .sev.High {color: #C2410C;} .sev.Medium {color: #A16207;} .sev.Low {color: #6B7280;}
-      .muted {color: #6B7280; font-size: .82rem;}
+      /* Metrics */
+      [data-testid="stMetric"] {
+          background: #E0E7FF; 
+          border: 3px solid #000; 
+          border-radius: 6px; 
+          box-shadow: 4px 4px 0px #000; 
+          padding: 16px;
+      }
+      [data-testid="stMetricLabel"] p {font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #000;}
+      [data-testid="stMetricValue"] {font-size: 1.8rem; font-weight: 800; color: #0055FF;}
+
+      /* Pills & Rows */
+      .pill { display: inline-block; padding: 0.4rem 1rem; border-radius: 4px; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; border: 3px solid #000; box-shadow: 3px 3px 0px #000;}
+      .pill.ok { background: #4ADE80; color: #000; }  
+      .pill.bad { background: #FF4D4D; color: #000; }
+      
+      .row { display: flex; gap: 1rem; align-items: center; padding: 0.8rem; border: 3px solid #000; background: #FFF; box-shadow: 3px 3px 0px #000; margin-bottom: 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.95rem;}
+      
+      .sev { flex: 0 0 5rem; text-align: center; padding: 0.2rem 0; border: 2px solid #000; border-radius: 4px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; box-shadow: 2px 2px 0px #000;}
+      .sev.Critical { background: #FF4D4D; color: #000; } 
+      .sev.High { background: #FFA500; color: #000; } 
+      .sev.Medium { background: #FCD34D; color: #000; } 
+      .sev.Low { background: #E2E8F0; color: #000; }
+      
+      .muted {color: #4B5563; font-size: 0.85rem; font-weight: 600;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -81,7 +146,7 @@ input_max_p95 = c3.number_input("Target P95 (ms)", value=1000, step=100, min_val
 section("Rekomendasi")
 mode = st.radio("Sumber rekomendasi", ["Groq", "Ollama", "Tanpa LLM"], horizontal=True, label_visibility="collapsed")
 st.markdown(
-    '<div class="muted">'
+    '<div class="muted" style="margin-bottom: 1rem;">'
     + {"Groq": "Dihasilkan model di Groq Cloud. Butuh GROQ_API_KEY di secrets atau environment.",
        "Ollama": "Dihasilkan model lokal. Butuh Ollama aktif di localhost.",
        "Tanpa LLM": "Memakai playbook dari file parameter. Cepat dan tanpa koneksi eksternal."}[mode]
