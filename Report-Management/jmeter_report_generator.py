@@ -498,6 +498,8 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}"
                 }
+
+                model_name = self.llm.get("model", "llama-3.1-8b-instant")
                 
                 payload = {
                     "model": self.llm.get("model", "llama-3.3-70b-versatile"),
@@ -515,7 +517,9 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     print("[ok] Rekomendasi Groq LLM diterima.")
                     return content
                 else:
-                    print(f"[!] Groq Error HTTP {res.status_code}: {res.text}")
+                    error_msg = f"HTTP {res.status_code}: {res.text}"
+                    print(f"[!] Groq Error: {error_msg}")
+                    return f"ERROR_GROQ: {error_msg}"
 
             # --- OPSI 2: OLLAMA LOKAL ---
             else:
