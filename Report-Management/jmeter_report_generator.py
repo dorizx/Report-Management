@@ -157,7 +157,8 @@ DEFAULT_ANALYSIS = {
 }
 DEFAULT_LLM = {
     "enabled": False, "provider": "groq",
-    "groq_model": "llama-3.3-70b-versatile", "groq_api_url": "https://api.groq.com/openai/v1/chat/completions",
+    "groq_model": "openai/gpt-oss-120b", "groq_api_url": "https://api.groq.com/openai/v1/chat/completions",
+    "groq_fallback_models": "openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.6-27b",
     "ollama_model": "llama3.2", "api_url": "http://localhost:11434/api/generate",
     "temperature": 0.2, "timeout_seconds": 300, "min_points": 4, "max_points": 5,
     "language": "Bahasa Indonesia",
@@ -526,6 +527,33 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
             key = str(self.llm.get("groq_api_key", "")).strip()
         return key
 
+    def _groq_body(self, model, prompt, temp):
+        body = {"model": model, "temperature": temp, "max_completion_tokens": 4000,
+                "messages": [{"role": "user", "content": prompt}]}
+        if "gpt-oss" in model:  # model reasoning: batasi agar token tidak habis untuk berpikir
+            body["reasoning_effort"] = "low"
+        return body
+
+    def _pick_groq_model(self, key, exclude):
+        exclude = set(exclude)
+        """Ambil daftar model aktif dari Groq lalu pilih pengganti sesuai urutan preferensi."""
+        base = (self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions")
+        models_url = base.rsplit("/chat/completions", 1)[0] + "/models"
+        try:
+            r = requests.get(models_url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
+            if r.status_code != 200:
+                return None
+            ids = [m.get("id", "") for m in r.json().get("data", []) if m.get("active", True)]
+        except Exception:  # noqa: BLE001
+            return None
+        prefs = as_list(self.llm.get("groq_fallback_models", ""))
+        for cand in prefs:
+            if cand in ids and cand not in exclude:
+                return cand
+        skip = ("whisper", "guard", "tts", "orpheus", "safeguard", "compound", "embed")
+        generic = [i for i in ids if i and i not in exclude and not any(x in i for x in skip)]
+        return generic[0] if generic else None
+
     def llm_recommendations(self, provider=None):
         """Mengembalikan teks rekomendasi dari LLM, atau None bila gagal.
         Penyebab kegagalan disimpan di self.llm_error; model yang dipakai di self.llm_used."""
@@ -538,6 +566,7 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
         timeout = int(self.llm["timeout_seconds"])
         temp = float(self.llm["temperature"])
         prompt = self._llm_prompt()
+        key = ""
 
         try:
             if provider == "groq":
@@ -547,11 +576,10 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                                       "atau environment variable GROQ_API_KEY.")
                     print(f"[!] {self.llm_error}")
                     return None
-                model = self.llm.get("groq_model") or "llama-3.3-70b-versatile"
+                model = self.llm.get("groq_model") or "openai/gpt-oss-120b"
                 url = self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
-                body = {"model": model, "temperature": temp, "max_tokens": 2500,
-                        "messages": [{"role": "user", "content": prompt}]}
+                body = self._groq_body(model, prompt, temp)
             else:
                 provider = "ollama"
                 model = self.llm.get("ollama_model") or "llama3.2"
@@ -563,24 +591,39 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
 
             print(f"[*] Menghubungi LLM via {provider.upper()} ({model}) ...")
-            res = None
-            for attempt in (1, 2):
+            res, tried = None, {model}
+            for _ in range(6):
                 res = requests.post(url, headers=headers, json=body, timeout=timeout)
-                if res.status_code == 429 and attempt == 1:  # rate limit: tunggu lalu coba sekali lagi
+                if res.status_code == 429:  # rate limit: tunggu lalu coba lagi
                     time.sleep(min(float(res.headers.get("retry-after", 5)), 20))
                     continue
+                gone = res.status_code in (400, 404) and any(
+                    t in res.text for t in ("model_not_found", "decommissioned", "does not exist"))
+                if provider == "groq" and gone:
+                    alt = self._pick_groq_model(key, exclude=tried)
+                    if alt:
+                        print(f"[!] Model '{model}' tidak tersedia di akun ini, mencoba '{alt}' ...")
+                        model = alt
+                        tried.add(alt)
+                        body = self._groq_body(model, prompt, temp)
+                        continue
                 break
 
             if res.status_code != 200:
                 self.llm_error = f"{provider} HTTP {res.status_code}: {res.text[:300]}"
+                if provider == "groq" and res.status_code in (400, 404):
+                    self.llm_error += " | Periksa groq_model di file parameter (model Llama 3.x lama sudah dihentikan Groq)."
                 print(f"[!] {self.llm_error}")
                 return None
 
             data = res.json()
-            content = data.get("response") or data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            choice = data.get("choices", [{}])[0]
+            content = data.get("response") or choice.get("message", {}).get("content", "")
             content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
             if len(content) < 50:
-                self.llm_error = f"{provider}: respons model kosong atau terlalu pendek."
+                why = "token habis sebelum jawaban selesai (finish_reason=length)" if choice.get("finish_reason") == "length" \
+                    else "respons model kosong atau terlalu pendek"
+                self.llm_error = f"{provider}/{model}: {why}."
                 print(f"[!] {self.llm_error}")
                 return None
 
