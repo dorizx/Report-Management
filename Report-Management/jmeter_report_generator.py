@@ -477,53 +477,76 @@ FORMAT OUTPUT:
 Tulis dalam {self.llm['language']}. Berikan {self.llm['min_points']} sampai {self.llm['max_points']} poin utama,
 diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Jangan mengarang angka."""
 
-    def llm_recommendations(self):
+    def llm_recommendations(self, provider="groq"):
         if not self.llm.get("enabled"):
             return None
-        print(f"[*] Menghubungi LLM ({self.llm['model']}) ...")
-        try:
-            headers = {"Content-Type": "application/json"}
-            if self.llm.get("api_key") and self.llm["api_key"] != "ollama":
-                headers["Authorization"] = f"Bearer {self.llm['api_key']}"
-
-            # --- Disesuaikan untuk Ollama / Llama API ---
-            url = self.llm["api_url"]
-            prompt_text = self._llm_prompt()
-
-            # Memeriksa apakah endpoint menggunakan API /api/generate milik Ollama
-            if "/api/generate" in url:
-                payload = {
-                    "model": self.llm["model"],
-                    "prompt": prompt_text,
-                    "stream": False,
-                    "options": {
-                        "temperature": float(self.llm["temperature"])
-                    }
-                }
-            else:
-                # Format OpenAI / v1 / Chat Completion kompatibel (bawaan skrip)
-                payload = {
-                    "model": self.llm["model"],
-                    "temperature": float(self.llm["temperature"]),
-                    "messages": [{"role": "user", "content": prompt_text}]
-                }
-
-            res = requests.post(url, headers=headers, timeout=int(self.llm["timeout_seconds"]), json=payload)
             
-            if res.status_code == 200:
-                res_data = res.json()
-                # Ekstraksi respons berdasarkan format API Ollama / OpenAI
-                if "response" in res_data:
-                    content = res_data["response"].strip()
-                else:
-                    content = res_data["choices"][0]["message"]["content"].strip()
+        print(f"[*] Menghubungi LLM via {provider.upper()} ({self.llm['model']}) ...")
+        try:
+            # --- OPSI 1: GROQ API ---
+            if provider.lower() == "groq":
+                api_key = self.llm.get("api_key", "")
+                # Ambil key dari Streamlit Secrets jika ada
+                try:
+                    import streamlit as st
+                    if "GROQ_API_KEY" in st.secrets:
+                        api_key = st.secrets["GROQ_API_KEY"]
+                except Exception:
+                    pass
 
-                content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
-                print("[ok] Rekomendasi LLM diterima.")
-                return content
-            print(f"[!] LLM mengembalikan HTTP {res.status_code}; memakai playbook.")
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}"
+                }
+                
+                payload = {
+                    "model": self.llm.get("model", "llama-3.3-70b-versatile"),
+                    "temperature": float(self.llm["temperature"]),
+                    "messages": [{"role": "user", "content": self._llm_prompt()}]
+                }
+                
+                url = self.llm.get("groq_api_url", "https://api.groq.com/openai/v1/chat/completions")
+                res = requests.post(url, headers=headers, timeout=int(self.llm["timeout_seconds"]), json=payload)
+                
+                if res.status_code == 200:
+                    res_data = res.json()
+                    content = res_data["choices"][0]["message"]["content"].strip()
+                    content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
+                    print("[ok] Rekomendasi Groq LLM diterima.")
+                    return content
+                else:
+                    print(f"[!] Groq Error HTTP {res.status_code}: {res.text}")
+
+            # --- OPSI 2: OLLAMA LOKAL ---
+            else:
+                headers = {"Content-Type": "application/json"}
+                url = self.llm.get("api_url", "http://localhost:11434/api/generate")
+                
+                if "/api/generate" in url:
+                    payload = {
+                        "model": "llama3.2",
+                        "prompt": self._llm_prompt(),
+                        "stream": False,
+                        "options": {"temperature": float(self.llm["temperature"])}
+                    }
+                else:
+                    payload = {
+                        "model": "llama3.2",
+                        "temperature": float(self.llm["temperature"]),
+                        "messages": [{"role": "user", "content": self._llm_prompt()}]
+                    }
+                    
+                res = requests.post(url, headers=headers, timeout=int(self.llm["timeout_seconds"]), json=payload)
+                if res.status_code == 200:
+                    res_data = res.json()
+                    content = res_data.get("response", res_data.get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
+                    content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
+                    print("[ok] Rekomendasi Ollama diterima.")
+                    return content
+
         except Exception as exc:  # noqa: BLE001
-            print(f"[!] Gagal memanggil LLM: {exc}; memakai playbook.")
+            print(f"[!] Gagal memanggil LLM ({provider}): {exc}; memakai playbook.")
+            
         return None
 
     # ---- charts ----------------------------------------------------------- #
