@@ -82,9 +82,7 @@ st.markdown(
           margin: 2rem 0 1rem 0;
       }
 
-      /* 
-       * FIX INPUT BOX: Menghindari teks & placeholder bertumpuk
-       */
+      /* Input Box */
       .stTextInput > div > div, 
       .stNumberInput > div > div {
           background-color: #FFFFFF !important;
@@ -117,15 +115,36 @@ st.markdown(
           font-size: 0.95rem !important;
       }
 
-      /* Area Unggah File */
+      /* PERBAIKAN FILE UPLOADER (Mencegah teks bertumpuk) */
       [data-testid="stFileUploaderDropzone"] { 
-          border: 3px dashed #000 !important; 
+          border: 3px dashed #000000 !important; 
           border-radius: 6px !important;
-          box-shadow: 4px 4px 0px #000 !important;
+          box-shadow: 4px 4px 0px #000000 !important;
           background-color: #F0F4FF !important;
           padding: 1.5rem !important;
       }
-      
+
+      /* Reset elemen internal uploader agar tidak saling menimpa */
+      [data-testid="stFileUploaderDropzone"] section {
+          padding: 0 !important;
+      }
+
+      [data-testid="stFileUploaderDropzone"] button {
+          border: 2px solid #000000 !important;
+          box-shadow: 2px 2px 0px #000000 !important;
+          background-color: #FFFFFF !important;
+          color: #000000 !important;
+          font-weight: 700 !important;
+          border-radius: 4px !important;
+          padding: 0.4rem 0.8rem !important;
+      }
+
+      [data-testid="stFileUploaderDropzone"] span, 
+      [data-testid="stFileUploaderDropzone"] small {
+          color: #4B5563 !important;
+          font-weight: 600 !important;
+      }
+
       /* Tombol Utama (Primary) */
       [data-testid="stElementContainer"]:has(button[kind="primary"]) { width: 100% !important; }
       button[kind="primary"] {
