@@ -18,6 +18,10 @@ st.markdown(
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
 
+    .stApp {
+        background-color: #F4F5F7 !important;
+    }
+
       /* Global Typography */
       html, body, [class*="css"], .stMarkdown {
           font-family: 'Space Grotesk', sans-serif !important;
