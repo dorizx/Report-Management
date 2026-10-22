@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from datetime import datetime
 
 import matplotlib
@@ -120,6 +121,14 @@ class ReportParameters:
             else:
                 self.sections[title] = _parse_block(body.splitlines())
 
+    def render(self, text, meta=None):
+        """Ganti {{kunci}} dengan nilai metadata (mis. {{project_name}}) atau {{today}}."""
+        if not isinstance(text, str) or "{{" not in text:
+            return text
+        values = {k: str(v) for k, v in (meta if meta is not None else self.meta).items()}
+        values["today"] = datetime.now().strftime("%Y-%m-%d")
+        return re.sub(r"\{\{\s*([A-Za-z_]\w*)\s*\}\}", lambda m: values.get(m.group(1), m.group(0)), text)
+
     def kv(self, section, defaults=None):
         merged = dict(defaults or {})
         merged.update(self.sections.get(section, {}).get("kv", {}))
@@ -147,9 +156,11 @@ DEFAULT_ANALYSIS = {
     "connect_warn_ms": 100, "datatable_label_regex": "Data List", "latency_share_warn_pct": 90,
 }
 DEFAULT_LLM = {
-    "enabled": False, "api_url": "http://localhost:11434/v1/chat/completions", "api_key": "ollama",
-    "model": "llama3.2", "temperature": 0.2, "timeout_seconds": 300, "min_points": 4,
-    "max_points": 5, "language": "Bahasa Indonesia",
+    "enabled": False, "provider": "groq",
+    "groq_model": "llama-3.3-70b-versatile", "groq_api_url": "https://api.groq.com/openai/v1/chat/completions",
+    "ollama_model": "llama3.2", "api_url": "http://localhost:11434/api/generate",
+    "temperature": 0.2, "timeout_seconds": 300, "min_points": 4, "max_points": 5,
+    "language": "Bahasa Indonesia",
 }
 
 
@@ -171,12 +182,13 @@ class JMeterReportGenerator:
         self.llm = params.kv("LLM", DEFAULT_LLM)
         if llm_override is not None:
             self.llm["enabled"] = llm_override
-        self.context = {k: v for k, v in params.kv("Konteks Sistem").items()
-                        if str(v).strip() and not str(v).strip().startswith("(isi")}
+        self.test_start = None  # waktu sampel pertama pada JTL
         self.df = None
         self.dq = []            # catatan kualitas data
         self.excluded_hosts = {}  # host -> {rows, codes}
         self.findings = []
+        self.llm_error = None   # alasan LLM gagal (untuk UI)
+        self.llm_used = None    # penyedia/model yang benar-benar dipakai
 
     # ---- loading ---------------------------------------------------------- #
     def load_data(self):
@@ -231,6 +243,7 @@ class JMeterReportGenerator:
 
         df = df.sort_values("timestamp").reset_index(drop=True)
         df["t"] = (df["timestamp"] - df["timestamp"].min()) / 1000.0
+        self.test_start = datetime.fromtimestamp(df["timestamp"].min() / 1000.0)
         drop = float(self.flt.get("drop_first_seconds", 0) or 0)
         if drop > 0:
             n0 = len(df)
@@ -439,6 +452,24 @@ class JMeterReportGenerator:
                            "infrastructure": fmt("infrastructure"), "verifikasi": fmt("verifikasi")})
         return blocks
 
+    @property
+    def context(self):
+        """Konteks Sistem dengan placeholder terisi; nilai '(isi ...)' dibuang."""
+        meta = self._resolved_meta()
+        return {k: self.params.render(v, meta) for k, v in self.params.kv("Konteks Sistem").items()
+                if str(v).strip() and not str(v).strip().startswith("(isi")}
+
+    def _resolved_meta(self):
+        """Metadata dengan fallback otomatis (nama proyek, tanggal uji) lalu placeholder {{...}} terisi."""
+        m = dict(self.params.meta)
+        name = str(m.get("project_name", "")).strip()
+        if not name or name.lower() == "auto" or name.startswith("(isi"):
+            m["project_name"] = os.path.splitext(os.path.basename(self.jtl_filepath))[0]
+        td = str(m.get("test_date", "")).strip().lower()
+        if td in ("", "auto") or td.startswith("(isi"):
+            m["test_date"] = self.test_start.strftime("%Y-%m-%d") if self.test_start else "-"
+        return {k: (self.params.render(v, m) if isinstance(v, str) else v) for k, v in m.items()}
+
     def _llm_prompt(self):
         ep = {l: {"avg": round(s["avg"]), "p95": round(s["p95"]), "p99": round(s["p99"]),
                   "error_pct": round(s["error_rate"], 2), "avg_kb": round(s["avg_bytes"] / 1024, 1) if s["avg_bytes"] == s["avg_bytes"] else None,
@@ -456,10 +487,15 @@ class JMeterReportGenerator:
             "catatan_kualitas_data": self.dq,
             "temuan_otomatis": [{"severity": f["severity"], "judul": f["title"], "bukti": f["evidence"]} for f in self.findings],
         }
-        persona = self.params.text("Peran dan Gaya Laporan")
-        rules = "\n".join(f"- {r}" for r in self.params.items("Aturan Analisis"))
-        ctx = "\n".join(f"- {k}: {v}" for k, v in self.context.items()) or "- (tidak diisi)"
-        fmt = self.params.text("Format Output Rekomendasi")
+        meta = self._resolved_meta()
+        persona = self.params.render(self.params.text("Peran dan Gaya Laporan"), meta)
+        rules = "\n".join(f"- {self.params.render(r, meta)}" for r in self.params.items("Aturan Analisis"))
+        ident = [f"- nama_proyek: {meta['project_name']}"]
+        for key, label in (("environment", "lingkungan"), ("test_type", "jenis_pengujian")):
+            if str(meta.get(key, "")).strip():
+                ident.append(f"- {label}: {meta[key]}")
+        ctx = "\n".join(ident + [f"- {k}: {v}" for k, v in self.context.items()])
+        fmt = self.params.render(self.params.text("Format Output Rekomendasi"), meta)
         return f"""{persona}
 
 KONTEKS SISTEM:
@@ -477,81 +513,85 @@ FORMAT OUTPUT:
 Tulis dalam {self.llm['language']}. Berikan {self.llm['min_points']} sampai {self.llm['max_points']} poin utama,
 diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Jangan mengarang angka."""
 
-    def llm_recommendations(self, provider="groq"):
+    def _resolve_groq_key(self):
+        """Urutan prioritas: env var -> Streamlit secrets -> parameter md (tidak disarankan)."""
+        key = os.environ.get("GROQ_API_KEY", "").strip()
+        if not key:
+            try:
+                import streamlit as st
+                key = str(st.secrets.get("GROQ_API_KEY", "")).strip()
+            except Exception:  # secrets.toml tidak ada
+                key = ""
+        if not key:
+            key = str(self.llm.get("groq_api_key", "")).strip()
+        return key
+
+    def llm_recommendations(self, provider=None):
+        """Mengembalikan teks rekomendasi dari LLM, atau None bila gagal.
+        Penyebab kegagalan disimpan di self.llm_error; model yang dipakai di self.llm_used."""
+        self.llm_error, self.llm_used = None, None
         if not self.llm.get("enabled"):
+            self.llm_error = "LLM dinonaktifkan (enabled: false)."
             return None
-            
-        print(f"[*] Menghubungi LLM via {provider.upper()} ({self.llm['model']}) ...")
+
+        provider = str(provider or self.llm.get("provider") or "groq").lower()
+        timeout = int(self.llm["timeout_seconds"])
+        temp = float(self.llm["temperature"])
+        prompt = self._llm_prompt()
+
         try:
-            # --- OPSI 1: GROQ API ---
-            if provider.lower() == "groq":
-                api_key = self.llm.get("api_key", "")
-                # Ambil key dari Streamlit Secrets jika ada
-                try:
-                    import streamlit as st
-                    if "GROQ_API_KEY" in st.secrets:
-                        api_key = st.secrets["GROQ_API_KEY"]
-                except Exception:
-                    pass
-
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
-                }
-
-                model_name = self.llm.get("model", "llama-3.1-8b-instant")
-                
-                payload = {
-                    "model": self.llm.get("model", "llama-3.3-70b-versatile"),
-                    "temperature": float(self.llm["temperature"]),
-                    "messages": [{"role": "user", "content": self._llm_prompt()}]
-                }
-                
-                url = self.llm.get("groq_api_url", "https://api.groq.com/openai/v1/chat/completions")
-                res = requests.post(url, headers=headers, timeout=int(self.llm["timeout_seconds"]), json=payload)
-                
-                if res.status_code == 200:
-                    res_data = res.json()
-                    content = res_data["choices"][0]["message"]["content"].strip()
-                    content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
-                    print("[ok] Rekomendasi Groq LLM diterima.")
-                    return content
-                else:
-                    error_msg = f"HTTP {res.status_code}: {res.text}"
-                    print(f"[!] Groq Error: {error_msg}")
-                    return f"ERROR_GROQ: {error_msg}"
-
-            # --- OPSI 2: OLLAMA LOKAL ---
+            if provider == "groq":
+                key = self._resolve_groq_key()
+                if not key:
+                    self.llm_error = ("GROQ_API_KEY tidak ditemukan. Isi di .streamlit/secrets.toml "
+                                      "atau environment variable GROQ_API_KEY.")
+                    print(f"[!] {self.llm_error}")
+                    return None
+                model = self.llm.get("groq_model") or "llama-3.3-70b-versatile"
+                url = self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
+                body = {"model": model, "temperature": temp, "max_tokens": 2500,
+                        "messages": [{"role": "user", "content": prompt}]}
             else:
+                provider = "ollama"
+                model = self.llm.get("ollama_model") or "llama3.2"
+                url = self.llm.get("api_url") or "http://localhost:11434/api/generate"
                 headers = {"Content-Type": "application/json"}
-                url = self.llm.get("api_url", "http://localhost:11434/api/generate")
-                
                 if "/api/generate" in url:
-                    payload = {
-                        "model": "llama3.2",
-                        "prompt": self._llm_prompt(),
-                        "stream": False,
-                        "options": {"temperature": float(self.llm["temperature"])}
-                    }
+                    body = {"model": model, "prompt": prompt, "stream": False, "options": {"temperature": temp}}
                 else:
-                    payload = {
-                        "model": "llama3.2",
-                        "temperature": float(self.llm["temperature"]),
-                        "messages": [{"role": "user", "content": self._llm_prompt()}]
-                    }
-                    
-                res = requests.post(url, headers=headers, timeout=int(self.llm["timeout_seconds"]), json=payload)
-                if res.status_code == 200:
-                    res_data = res.json()
-                    content = res_data.get("response", res_data.get("choices", [{}])[0].get("message", {}).get("content", "")).strip()
-                    content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
-                    print("[ok] Rekomendasi Ollama diterima.")
-                    return content
+                    body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
+
+            print(f"[*] Menghubungi LLM via {provider.upper()} ({model}) ...")
+            res = None
+            for attempt in (1, 2):
+                res = requests.post(url, headers=headers, json=body, timeout=timeout)
+                if res.status_code == 429 and attempt == 1:  # rate limit: tunggu lalu coba sekali lagi
+                    time.sleep(min(float(res.headers.get("retry-after", 5)), 20))
+                    continue
+                break
+
+            if res.status_code != 200:
+                self.llm_error = f"{provider} HTTP {res.status_code}: {res.text[:300]}"
+                print(f"[!] {self.llm_error}")
+                return None
+
+            data = res.json()
+            content = data.get("response") or data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
+            if len(content) < 50:
+                self.llm_error = f"{provider}: respons model kosong atau terlalu pendek."
+                print(f"[!] {self.llm_error}")
+                return None
+
+            self.llm_used = f"{provider.capitalize()} / {model}"
+            print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
+            return content
 
         except Exception as exc:  # noqa: BLE001
-            print(f"[!] Gagal memanggil LLM ({provider}): {exc}; memakai playbook.")
-            
-        return None
+            self.llm_error = f"{provider}: {exc}"
+            print(f"[!] Gagal memanggil LLM: {self.llm_error}")
+            return None
 
     # ---- charts ----------------------------------------------------------- #
     def _charts(self, outdir):
@@ -689,7 +729,7 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
         print(f"[ok] Laporan tersimpan: {output_filename}")
 
     def _build_doc(self, out, charts, llm_text, blocks):
-        meta, g, sla = self.params.meta, self.g, self.sla
+        meta, g, sla = self._resolved_meta(), self.g, self.sla
         doc = Document()
         for s in doc.sections:
             s.top_margin = s.bottom_margin = Inches(0.9)
@@ -714,7 +754,10 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
         r.font.size = Pt(24); r.bold = True; r.font.color.rgb = NAVY
         d = datetime.now()
         p = doc.add_paragraph()
-        r = p.add_run(f"{meta.get('project_name', '')} - {meta.get('test_type', 'Load Test')} ({meta.get('environment', '')})")
+        sub = f"{meta.get('project_name', '')} - {meta.get('test_type', 'Load Test')}"
+        if str(meta.get("environment", "")).strip():
+            sub += f" ({meta['environment']})"
+        r = p.add_run(sub)
         r.font.size = Pt(12); r.font.color.rgb = DARK_GRAY
         meta_rows = [("Tanggal pengujian", str(meta.get("test_date", "-"))),
                      ("Tanggal laporan", f"{d.day} {MONTHS_ID[d.month - 1]} {d.year}"),
@@ -814,7 +857,7 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
         # 7 Rekomendasi
         self._heading(doc, "7. Rekomendasi Teknis dan Arsitektur")
         if llm_text:
-            n = self.llm["model"]
+            n = self.llm_used or "LLM"
             self._rich(doc.add_paragraph(), f"Analisis disusun oleh model **{n}** berdasarkan data pengujian dan konteks sistem pada file parameter.", size=9)
             self._render_markdown(doc, llm_text)
         elif blocks:

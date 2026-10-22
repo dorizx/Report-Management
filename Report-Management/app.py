@@ -111,23 +111,18 @@ if uploaded_jtl and st.button("🚀 Proses & Buat Laporan", type="primary"):
                 docx_out_path = os.path.join(tmpdirname, output_filename)
 
                 # 5. Logika Pemanggilan LLM vs Playbook
-                if "Groq" in llm_option:
-                    llm_text = generator.llm_recommendations(provider="groq")
-                    if not llm_text:
-                        st.warning("⚠️ Groq API tidak merespons. Menggunakan Playbook sebagai cadangan.")
-                        blocks = generator.playbook_blocks()
+                # Playbook selalu dihitung: dipakai sebagai cadangan dan untuk Matriks Tindakan di laporan.
+                blocks = generator.playbook_blocks()
+                llm_text = None
+                provider = "groq" if "Groq" in llm_option else ("ollama" if "Ollama" in llm_option else None)
+
+                if provider:
+                    llm_text = generator.llm_recommendations(provider=provider)
+                    if llm_text:
+                        st.success(f"✅ Rekomendasi dihasilkan oleh {generator.llm_used}.")
                     else:
-                        blocks = None
-                elif "Ollama" in llm_option:
-                    llm_text = generator.llm_recommendations(provider="ollama")
-                    if not llm_text:
-                        st.warning("⚠️ Ollama lokal tidak terhubung. Menggunakan Playbook sebagai cadangan.")
-                        blocks = generator.playbook_blocks()
-                    else:
-                        blocks = None
-                else:
-                    llm_text = None
-                    blocks = generator.playbook_blocks()
+                        st.warning(f"⚠️ {provider.capitalize()} gagal: {generator.llm_error}. "
+                                   "Laporan memakai Playbook sebagai cadangan.")
 
                 # 6. Ekspor Laporan Word
                 charts = generator._charts(tmpdirname)
