@@ -660,10 +660,20 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                 model = self.llm.get("ollama_model") or "llama3.2"
                 url = self.llm.get("api_url") or "http://localhost:11434/api/generate"
                 headers = {"Content-Type": "application/json"}
+                
                 if "/api/generate" in url:
-                    body = {"model": model, "prompt": prompt, "stream": False, "options": {"temperature": temp}}
+                    body = {
+                        "model": model, 
+                        "prompt": prompt, 
+                        "stream": False, 
+                        "options": {"temperature": temp}
+                    }
                 else:
-                    body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
+                    body = {
+                        "model": model, 
+                        "temperature": temp, 
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
 
                 print(f"[*] Menghubungi Ollama ({model}) ...")
                 res = requests.post(url, headers=headers, json=body, timeout=timeout)
@@ -674,8 +684,8 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     return None
 
                 data = res.json()
-                choice = data.get("choices", [{}])[0]
-                content = data.get("response") or choice.get("message", {}).get("content", "")
+                # Tangkap respon dari /api/generate maupun /v1/chat/completions
+                content = data.get("response") or data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
 
                 self.llm_used = f"Ollama / {model}"
