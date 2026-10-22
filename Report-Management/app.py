@@ -21,12 +21,6 @@ st.write("Unggah file hasil pengujian JMeter (`.jtl`/`.csv`) dan konfigurasi (`.
 # --------------------------------------------------------------------------- #
 st.sidebar.header("⚙️ Konfigurasi Parameter & Metadata")
 
-uploaded_md = st.sidebar.file_uploader(
-    "1. Upload Parameters (.md)", 
-    type=["md"],
-    help="Jika tidak diunggah, aplikasi akan mencari file 'report_parameters.md' bawaan."
-)
-
 st.sidebar.subheader("📌 Metadata & Target SLA")
 input_app_name = st.sidebar.text_input("Nama Aplikasi / Proyek", value="Sistem E-Commerce")
 input_qa_name = st.sidebar.text_input("Nama QA / Disusun Oleh", value="Aditya Daffa Syahputra")
@@ -52,11 +46,27 @@ output_filename = st.sidebar.text_input(
 # --------------------------------------------------------------------------- #
 # Main Area: Upload File Result & Eksekusi
 # --------------------------------------------------------------------------- #
-uploaded_jtl = st.file_uploader(
-    "Upload Hasil JMeter (.jtl / .csv)", 
-    type=["jtl", "csv"],
-    help="File log mentah hasil pengujian dari JMeter CLI/Non-GUI mode."
-)
+st.subheader("📁 Unggah Berkas Pengujian")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    uploaded_md = st.file_uploader(
+        "1. Upload File Parameter (.md) - Opsional", 
+        type=["md"],
+        help="Jika tidak diunggah, sistem akan menggunakan 'report_parameters.md' bawaan."
+    )
+
+with col2:
+    uploaded_jtl = st.file_uploader(
+        "2. Upload Hasil JMeter (.jtl / .csv) - Wajib", 
+        type=["jtl", "csv"],
+        help="File log mentah hasil pengujian dari JMeter."
+    )
+
+# --------------------------------------------------------------------------- #
+# Eksekusi Pembuatan Laporan
+# --------------------------------------------------------------------------- #
 
 if uploaded_jtl and st.button("🚀 Proses & Buat Laporan", type="primary"):
     with st.spinner("Menganalisis data dan menghasilkan laporan Word..."):
