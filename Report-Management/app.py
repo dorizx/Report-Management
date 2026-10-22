@@ -8,7 +8,6 @@ from jmeter_report_generator import JMeterReportGenerator, ReportParameters
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PARAMS = os.path.join(BASE_DIR, "report_parameters.md")
 
-# Ikon dihapus sesuai preferensi Anda
 st.set_page_config(page_title="JMeter Report Generator", layout="centered")
 
 # --------------------------------------------------------------------------- #
@@ -41,7 +40,7 @@ st.markdown(
       /* Section Badge */
       .section {font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #FFFFFF !important; background-color: #0055FF; display: inline-block; padding: 0.4rem 1rem; border: 3px solid #000; box-shadow: 3px 3px 0px #000; border-radius: 6px; margin: 2rem 0 1rem 0;}
 
-      /* PERBAIKAN: Input, Expander, File Uploader */
+      /* Input, Expander, File Uploader */
       [data-testid="stFileUploaderDropzone"],
       [data-testid="stExpander"],
       [data-baseweb="input"], [data-baseweb="select"] > div,
@@ -54,7 +53,7 @@ st.markdown(
           transition: all 0.2s ease;
       }
       
-      /* PERBAIKAN: Teks di dalam input box */
+      /* Teks di dalam input box */
       [data-baseweb="input"] input, 
       [data-baseweb="number-input"] input,
       [data-testid="stFileUploaderDropzone"] div {
@@ -64,7 +63,7 @@ st.markdown(
           font-weight: 600 !important;
       }
       
-      /* PERBAIKAN: Label judul input (Nama Proyek, dll) dan Radio Button */
+      /* Label judul input dan Radio Button */
       label[data-testid="stWidgetLabel"] p,
       [data-testid="stRadio"] p,
       [data-testid="stRadio"] span {
@@ -75,7 +74,6 @@ st.markdown(
       [data-testid="stFileUploaderDropzone"] { border-style: dashed !important; background-color: #F0F4FF !important;}
       [data-testid="stExpander"] { background-color: #FAFAFA !important; }
       
-      /* Reset hover state for inputs so shadow doesn't disappear weirdly */
       [data-baseweb="input"]:focus-within, [data-baseweb="select"] > div:focus-within { box-shadow: 4px 4px 0px #0055FF !important; }
 
       /* Buttons */
@@ -170,10 +168,11 @@ input_qa_name = c2.text_input("Disusun oleh", value="Aditya Daffa Syahputra")
 input_max_p95 = c3.number_input("Target P95 (ms)", value=1000, step=100, min_value=1)
 
 section("Rekomendasi")
-mode = st.radio("Sumber rekomendasi", ["Groq", "Ollama", "Tanpa LLM"], horizontal=True, label_visibility="collapsed")
+mode = st.radio("Sumber rekomendasi", ["Gemini", "Groq", "Ollama", "Tanpa LLM"], horizontal=True, label_visibility="collapsed")
 st.markdown(
     '<div class="muted" style="margin-bottom: 1rem;">'
-    + {"Groq": "Dihasilkan model di Groq Cloud. Butuh GROQ_API_KEY di secrets atau environment.",
+    + {"Gemini": "Dihasilkan model Google Gemini. Butuh GEMINI_API_KEY di secrets atau environment.",
+       "Groq": "Dihasilkan model di Groq Cloud. Butuh GROQ_API_KEY di secrets atau environment.",
        "Ollama": "Dihasilkan model lokal. Butuh Ollama aktif di localhost.",
        "Tanpa LLM": "Memakai playbook dari file parameter. Cepat dan tanpa koneksi eksternal."}[mode]
     + "</div>",
@@ -214,7 +213,7 @@ def run_pipeline():
             params.sections["SLA"] = {"kv": {}, "items": [], "text": ""}
         params.sections["SLA"]["kv"]["max_p95_ms"] = int(input_max_p95)
 
-        provider = {"Groq": "groq", "Ollama": "ollama"}.get(mode)
+        provider = {"Gemini": "gemini", "Groq": "groq", "Ollama": "ollama"}.get(mode)
         gen = JMeterReportGenerator(jtl_path, params, llm_override=provider is not None)
 
         with st.status("Memproses data", expanded=False) as status:
@@ -226,9 +225,6 @@ def run_pipeline():
 
             llm_text, note = None, ("Rekomendasi dari playbook.", None)
             if provider:
-                if not hasattr(gen, "llm_error"):
-                    st.error("jmeter_report_generator.py yang terpasang masih versi lama. Ganti dengan versi terbaru lalu restart aplikasi.")
-                    st.stop()
                 status.update(label=f"Menyusun rekomendasi dengan {provider.capitalize()}")
                 llm_text = gen.llm_recommendations(provider=provider)
                 if llm_text and not str(llm_text).startswith("ERROR_"):

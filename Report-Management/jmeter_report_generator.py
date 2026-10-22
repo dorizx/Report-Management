@@ -5,10 +5,6 @@ JMeter Word Report Generator (parameter-driven).
 Membaca hasil JMeter (.jtl, format CSV) dan sebuah file parameter Markdown (.md)
 untuk menghasilkan laporan Word yang rapi berisi metrik, temuan otomatis, dan
 rekomendasi tindakan (Database, Application/Connection Pool, Infrastructure).
-
-Contoh:
-    python jmeter_report_generator.py --jtl result.jtl --params report_parameters.md
-    python jmeter_report_generator.py --jtl result.jtl --params report_parameters.md --no-llm
 """
 
 import argparse
@@ -141,7 +137,6 @@ class ReportParameters:
         sec = self.sections.get(section)
         if not sec:
             return default
-        # buang paragraf pengantar pertama? tidak: kirim apa adanya.
         return sec["text"] or default
 
 
@@ -156,9 +151,9 @@ DEFAULT_ANALYSIS = {
     "connect_warn_ms": 100, "datatable_label_regex": "Data List", "latency_share_warn_pct": 90,
 }
 DEFAULT_LLM = {
-    "enabled": False, "provider": "groq",
-    "groq_model": "openai/gpt-oss-120b", "groq_api_url": "https://api.groq.com/openai/v1/chat/completions",
-    "groq_fallback_models": "openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.6-27b",
+    "enabled": False, "provider": "gemini",
+    "groq_model": "llama-3.3-70b-versatile", "groq_api_url": "https://api.groq.com/openai/v1/chat/completions",
+    "groq_fallback_models": "llama-3.3-70b-versatile, llama-3.1-8b-instant",
     "ollama_model": "llama3.2", "api_url": "http://localhost:11434/api/generate",
     "temperature": 0.2, "timeout_seconds": 300, "min_points": 4, "max_points": 5,
     "language": "Bahasa Indonesia",
@@ -183,13 +178,13 @@ class JMeterReportGenerator:
         self.llm = params.kv("LLM", DEFAULT_LLM)
         if llm_override is not None:
             self.llm["enabled"] = llm_override
-        self.test_start = None  # waktu sampel pertama pada JTL
+        self.test_start = None
         self.df = None
-        self.dq = []            # catatan kualitas data
-        self.excluded_hosts = {}  # host -> {rows, codes}
+        self.dq = []
+        self.excluded_hosts = {}
         self.findings = []
-        self.llm_error = None   # alasan LLM gagal (untuk UI)
-        self.llm_used = None    # penyedia/model yang benar-benar dipakai
+        self.llm_error = None
+        self.llm_used = None
 
     # ---- loading ---------------------------------------------------------- #
     def load_data(self):
@@ -211,7 +206,6 @@ class JMeterReportGenerator:
         raw_total = len(df)
         print(f"[ok] {raw_total:,} baris dimuat.")
 
-        # Filter host target
         target = str(self.flt.get("target_host", "")).strip()
         if target:
             off = df[df["host"] != target]
@@ -285,7 +279,6 @@ class JMeterReportGenerator:
     def compute(self):
         self.g = self._stats(self.df)
         self.eps = {l: self._stats(g) for l, g in self.df.groupby("label", sort=False)}
-        # fase
         ru = float(self.cfg["ramp_up_seconds"])
         self.phases = {}
         if ru > 0:
@@ -293,9 +286,7 @@ class JMeterReportGenerator:
             steady = self.df[self.df["t"] >= ru]
             if len(steady):
                 self.phases["Steady state"] = self._stats(steady)
-        # profil konkurensi
         self.conc, self.slope, self.corr = self._concurrency_profile()
-        # baseline beban rendah
         self.baseline = self._baseline()
 
     def _concurrency_profile(self):
@@ -327,7 +318,6 @@ class JMeterReportGenerator:
         c, sla, F = self.cfg, self.sla, []
         short = lambda labels, n=4: ", ".join(labels[:n]) + (f" (+{len(labels) - n} lainnya)" if len(labels) > n else "")
 
-        # a. kualitas data / konfigurasi
         if self.excluded_hosts:
             hosts = ", ".join(self.excluded_hosts)
             rows = sum(v["rows"] for v in self.excluded_hosts.values())
@@ -336,14 +326,12 @@ class JMeterReportGenerator:
                       "evidence": f"{rows} sampel ke {hosts} dikeluarkan dari analisis (target_host: {self.flt.get('target_host')}).",
                       "vars": {"hosts": hosts}})
 
-        # b. error aplikasi
         if self.g["error_rate"] > sla["max_error_rate_pct"]:
             F.append({"key": "error_aplikasi", "severity": "Critical",
                       "title": "Error rate melebihi SLA",
                       "evidence": f"Error rate {self.g['error_rate']:.2f}% ({self.g['failed_req']:,} gagal) vs SLA {sla['max_error_rate_pct']}%.",
                       "vars": {"error_rate": f"{self.g['error_rate']:.2f}"}})
 
-        # c. antrean konkurensi
         if (not self.conc.empty and self.conc["vu"].nunique() >= 5
                 and self.slope >= c["concurrency_slope_warn_ms"] and self.corr >= c["concurrency_corr_warn"]):
             lo, hi = self.conc.iloc[0], self.conc.iloc[-1]
@@ -359,7 +347,6 @@ class JMeterReportGenerator:
                                    f"Latency {self.g['latency_share']:.0f}% dari Elapsed, Connect {self.g['avg_connect']:.1f} ms.{extra}"),
                       "vars": {"slope": f"{self.slope:.0f}", "corr": f"{self.corr:.2f}"}})
 
-        # d. overhead tetap pada endpoint kecil
         small = {l for l, s in self.eps.items() if s["avg_bytes"] == s["avg_bytes"] and s["avg_bytes"] < c["small_payload_kb"] * 1024}
         flagged = sorted([l for l in small if self.baseline.get(l, 0) >= c["fixed_overhead_ms"]],
                          key=lambda l: -self.baseline[l])
@@ -371,7 +358,6 @@ class JMeterReportGenerator:
                                    f"≥{c['fixed_overhead_ms']} ms saat ≤{c['baseline_threads']} VU (median gabungan {med:.0f} ms): {short(flagged)}."),
                       "vars": {"labels": short(flagged), "baseline_ms": f"{med:.0f}"}})
 
-        # e. payload besar
         total_b = self.g["total_bytes"] or 0
         big = sorted([(l, s) for l, s in self.eps.items()
                       if s["avg_bytes"] == s["avg_bytes"] and s["avg_bytes"] >= c["payload_warn_kb"] * 1024],
@@ -385,7 +371,6 @@ class JMeterReportGenerator:
                       "vars": {"labels": short([l for l, _ in big]), "payload_kb": f"{np.mean([s['avg_bytes'] for _, s in big]) / 1024:.0f}",
                                "share": f"{share:.0f}"}})
 
-        # f. datatable lambat
         rx = str(c["datatable_label_regex"])
         dt = sorted([l for l, s in self.eps.items() if rx and re.search(rx, l) and s["avg"] > c["slow_endpoint_ms"]],
                     key=lambda l: -self.eps[l]["avg"])
@@ -396,7 +381,6 @@ class JMeterReportGenerator:
                                   ", ".join(f"{l} ({self.eps[l]['avg']:.0f} ms)" for l in dt[:4]) + ".",
                       "vars": {"labels": short(dt)}})
 
-        # g. tail latency
         tails = sorted([l for l, s in self.eps.items()
                         if s["p99"] > s["p50"] * c["tail_ratio_warn"] and s["p99"] > c["tail_min_p99_ms"]],
                        key=lambda l: -self.eps[l]["p99"])
@@ -408,13 +392,11 @@ class JMeterReportGenerator:
                                   f"contoh {tails[0]}: P50 {t0['p50']:.0f} ms, P99 {t0['p99']:.0f} ms.",
                       "vars": {"labels": short(tails)}})
 
-        # h. connect
         if self.g["avg_connect"] > c["connect_warn_ms"]:
             F.append({"key": "network_connect", "severity": "Medium", "title": "Connect Time tinggi",
                       "evidence": f"Connect rata-rata {self.g['avg_connect']:.1f} ms (> {c['connect_warn_ms']} ms).",
                       "vars": {"connect_ms": f"{self.g['avg_connect']:.1f}"}})
 
-        # i. throughput
         if self.g["tps"] < sla["min_tps"]:
             F.append({"key": "throughput_rendah", "severity": "Low", "title": "Throughput di bawah target",
                       "evidence": f"Active TPS {self.g['tps']:.2f} req/s (puncak {self.g['peak_tps']:.0f}) vs target {sla['min_tps']} req/s; "
@@ -455,13 +437,11 @@ class JMeterReportGenerator:
 
     @property
     def context(self):
-        """Konteks Sistem dengan placeholder terisi; nilai '(isi ...)' dibuang."""
         meta = self._resolved_meta()
         return {k: self.params.render(v, meta) for k, v in self.params.kv("Konteks Sistem").items()
                 if str(v).strip() and not str(v).strip().startswith("(isi")}
 
     def _resolved_meta(self):
-        """Metadata dengan fallback otomatis (nama proyek, tanggal uji) lalu placeholder {{...}} terisi."""
         m = dict(self.params.meta)
         name = str(m.get("project_name", "")).strip()
         if not name or name.lower() == "auto" or name.startswith("(isi"):
@@ -514,72 +494,97 @@ FORMAT OUTPUT:
 Tulis dalam {self.llm['language']}. Berikan {self.llm['min_points']} sampai {self.llm['max_points']} poin utama,
 diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Jangan mengarang angka."""
 
+    def _resolve_gemini_key(self):
+        key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not key:
+            try:
+                import streamlit as st
+                key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+            except Exception:
+                key = ""
+        return key
+
     def _resolve_groq_key(self):
-        """Urutan prioritas: env var -> Streamlit secrets -> parameter md (tidak disarankan)."""
         key = os.environ.get("GROQ_API_KEY", "").strip()
         if not key:
             try:
                 import streamlit as st
                 key = str(st.secrets.get("GROQ_API_KEY", "")).strip()
-            except Exception:  # secrets.toml tidak ada
+            except Exception:
                 key = ""
         if not key:
             key = str(self.llm.get("groq_api_key", "")).strip()
         return key
 
-    def _groq_body(self, model, prompt, temp):
-        body = {"model": model, "temperature": temp, "max_completion_tokens": 4000,
-                "messages": [{"role": "user", "content": prompt}]}
-        if "gpt-oss" in model:  # model reasoning: batasi agar token tidak habis untuk berpikir
-            body["reasoning_effort"] = "low"
-        return body
-
-    def _pick_groq_model(self, key, exclude):
-        exclude = set(exclude)
-        """Ambil daftar model aktif dari Groq lalu pilih pengganti sesuai urutan preferensi."""
-        base = (self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions")
-        models_url = base.rsplit("/chat/completions", 1)[0] + "/models"
-        try:
-            r = requests.get(models_url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
-            if r.status_code != 200:
-                return None
-            ids = [m.get("id", "") for m in r.json().get("data", []) if m.get("active", True)]
-        except Exception:  # noqa: BLE001
-            return None
-        prefs = as_list(self.llm.get("groq_fallback_models", ""))
-        for cand in prefs:
-            if cand in ids and cand not in exclude:
-                return cand
-        skip = ("whisper", "guard", "tts", "orpheus", "safeguard", "compound", "embed")
-        generic = [i for i in ids if i and i not in exclude and not any(x in i for x in skip)]
-        return generic[0] if generic else None
-
     def llm_recommendations(self, provider=None):
-        """Mengembalikan teks rekomendasi dari LLM, atau None bila gagal.
-        Penyebab kegagalan disimpan di self.llm_error; model yang dipakai di self.llm_used."""
         self.llm_error, self.llm_used = None, None
         if not self.llm.get("enabled"):
             self.llm_error = "LLM dinonaktifkan (enabled: false)."
             return None
 
-        provider = str(provider or self.llm.get("provider") or "groq").lower()
+        provider = str(provider or self.llm.get("provider") or "gemini").lower()
         timeout = int(self.llm["timeout_seconds"])
         temp = float(self.llm["temperature"])
         prompt = self._llm_prompt()
-        key = ""
 
         try:
-            if provider == "groq":
-                key = self._resolve_groq_key()
+            # --- PROVIDER 1: GEMINI ---
+            if provider == "gemini":
+                from google import genai
+                from google.genai import types
+
+                key = self._resolve_gemini_key()
                 if not key:
-                    self.llm_error = ("GROQ_API_KEY tidak ditemukan. Isi di .streamlit/secrets.toml "
-                                      "atau environment variable GROQ_API_KEY.")
+                    self.llm_error = "GEMINI_API_KEY tidak ditemukan. Isi di secrets.toml atau environment variable."
                     print(f"[!] {self.llm_error}")
                     return None
-                model = self.llm.get("groq_model") or "openai/gpt-oss-120b"
+
+                os.environ["GEMINI_API_KEY"] = key
+                client = genai.Client()
+
+                models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+
+                for model in models_to_try:
+                    for attempt in range(1, 4):
+                        try:
+                            print(f"[*] Menghubungi Gemini API ({model}) (percobaan {attempt})...")
+                            res = client.models.generate_content(
+                                model=model,
+                                contents=prompt,
+                                config=types.GenerateContentConfig(
+                                    temperature=temp,
+                                    top_p=0.95
+                                )
+                            )
+                            content = res.text.strip()
+                            content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", content, flags=re.M).strip()
+                            self.llm_used = f"Gemini / {model}"
+                            print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
+                            return content
+                        except Exception as err:
+                            err_msg = str(err)
+                            if "503" in err_msg or "UNAVAILABLE" in err_msg:
+                                time.sleep(3)
+                            else:
+                                print(f"[!] Error pada {model}: {err_msg}")
+                                break
+
+                self.llm_error = "Gemini: Semua model sedang sibuk atau tidak dapat diakses."
+                return None
+
+            # --- PROVIDER 2: GROQ ---
+            elif provider == "groq":
+                key = self._resolve_groq_key()
+                if not key:
+                    self.llm_error = "GROQ_API_KEY tidak ditemukan. Isi di secrets.toml atau environment variable."
+                    print(f"[!] {self.llm_error}")
+                    return None
+                model = self.llm.get("groq_model") or "llama-3.3-70b-versatile"
                 url = self.llm.get("groq_api_url") or "https://api.groq.com/openai/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
-                body = self._groq_body(model, prompt, temp)
+                body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
+
+            # --- PROVIDER 3: OLLAMA ---
             else:
                 provider = "ollama"
                 model = self.llm.get("ollama_model") or "llama3.2"
@@ -591,28 +596,10 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
                     body = {"model": model, "temperature": temp, "messages": [{"role": "user", "content": prompt}]}
 
             print(f"[*] Menghubungi LLM via {provider.upper()} ({model}) ...")
-            res, tried = None, {model}
-            for _ in range(6):
-                res = requests.post(url, headers=headers, json=body, timeout=timeout)
-                if res.status_code == 429:  # rate limit: tunggu lalu coba lagi
-                    time.sleep(min(float(res.headers.get("retry-after", 5)), 20))
-                    continue
-                gone = res.status_code in (400, 404) and any(
-                    t in res.text for t in ("model_not_found", "decommissioned", "does not exist"))
-                if provider == "groq" and gone:
-                    alt = self._pick_groq_model(key, exclude=tried)
-                    if alt:
-                        print(f"[!] Model '{model}' tidak tersedia di akun ini, mencoba '{alt}' ...")
-                        model = alt
-                        tried.add(alt)
-                        body = self._groq_body(model, prompt, temp)
-                        continue
-                break
+            res = requests.post(url, headers=headers, json=body, timeout=timeout)
 
             if res.status_code != 200:
                 self.llm_error = f"{provider} HTTP {res.status_code}: {res.text[:300]}"
-                if provider == "groq" and res.status_code in (400, 404):
-                    self.llm_error += " | Periksa groq_model di file parameter (model Llama 3.x lama sudah dihentikan Groq)."
                 print(f"[!] {self.llm_error}")
                 return None
 
@@ -620,12 +607,6 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
             choice = data.get("choices", [{}])[0]
             content = data.get("response") or choice.get("message", {}).get("content", "")
             content = re.sub(r"^```(?:markdown|md)?\s*|\s*```$", "", (content or "").strip(), flags=re.M).strip()
-            if len(content) < 50:
-                why = "token habis sebelum jawaban selesai (finish_reason=length)" if choice.get("finish_reason") == "length" \
-                    else "respons model kosong atau terlalu pendek"
-                self.llm_error = f"{provider}/{model}: {why}."
-                print(f"[!] {self.llm_error}")
-                return None
 
             self.llm_used = f"{provider.capitalize()} / {model}"
             print(f"[ok] Rekomendasi diterima dari {self.llm_used}.")
@@ -737,7 +718,6 @@ diurutkan dari keparahan tertinggi, dan gunakan angka dari data di atas saja. Ja
             run._r.append(el)
 
     def _render_markdown(self, doc, text):
-        """Render teks markdown sederhana dari LLM ke paragraf Word."""
         for raw in text.splitlines():
             if not raw.strip():
                 continue

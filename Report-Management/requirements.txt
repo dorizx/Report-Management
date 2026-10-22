@@ -4,3 +4,4 @@ matplotlib
 python-docx
 requests
 numpy
+google-genai
