@@ -126,7 +126,19 @@ st.markdown(
           padding: 1rem !important;
       }
 
-      /* Biarkan tombol internal uploader ter-style alami tanpa mengganggu tata letak flexbox */
+      /* Keep the uploader button and its instructions in separate flex items. */
+      [data-testid="stFileUploaderDropzone"] section {
+          display: flex !important;
+          align-items: center !important;
+          gap: 0.8rem !important;
+          flex-wrap: wrap !important;
+      }
+
+      [data-testid="stFileUploaderDropzoneInstructions"] {
+          flex: 1 1 12rem !important;
+          min-width: 0 !important;
+      }
+
       [data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {
           border: 2px solid #000000 !important;
           box-shadow: 2px 2px 0px #000000 !important;
@@ -135,12 +147,15 @@ st.markdown(
           font-weight: 700 !important;
           border-radius: 4px !important;
           padding: 0.4rem 0.8rem !important;
-          margin-right: 0.8rem !important;
+          margin: 0 !important;
+          flex: 0 0 auto !important;
+          min-width: max-content !important;
+          white-space: nowrap !important;
       }
 
       /* Pastikan teks keterangan ukuran file bersih dan terbaca */
       [data-testid="stFileUploaderDropzone"] [data-testid="stMarkdownContainer"] p,
-      [data-testid="stFileUploaderDropzone"] span {
+      [data-testid="stFileUploaderDropzone"] small {
           color: #4B5563 !important;
           font-weight: 600 !important;
           font-size: 0.85rem !important;
@@ -287,7 +302,7 @@ uploaded_jtl = st.file_uploader("Hasil JMeter (.jtl atau .csv)", type=["jtl", "c
 
 section("Detail laporan")
 c1, c2, c3 = st.columns([1.4, 1.4, 1])
-input_app_name = c1.text_input("Nama proyek", value="Sistem E-Commerce")
+input_app_name = c1.text_input("Nama proyek", value="Sistem Informasi Perusahaan")
 input_qa_name = c2.text_input("Disusun oleh", value="Aditya Daffa Syahputra")
 input_max_p95 = c3.number_input("Target P95 (ms)", value=1000, step=100, min_value=1)
 
