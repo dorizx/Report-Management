@@ -117,11 +117,19 @@ if uploaded_jtl and st.button("🚀 Proses & Buat Laporan", type="primary"):
                 provider = "groq" if "Groq" in llm_option else ("ollama" if "Ollama" in llm_option else None)
 
                 if provider:
+                    # Guard versi: pastikan jmeter_report_generator.py yang dipakai adalah versi terbaru
+                    if not hasattr(generator, "llm_error"):
+                        st.error("File jmeter_report_generator.py yang terpasang masih versi lama (tidak punya "
+                                 "atribut llm_used/llm_error). Ganti dengan versi terbaru lalu jalankan ulang aplikasi.")
+                        st.stop()
+
                     llm_text = generator.llm_recommendations(provider=provider)
-                    if llm_text:
-                        st.success(f"✅ Rekomendasi dihasilkan oleh {generator.llm_used}.")
+                    if llm_text and not str(llm_text).startswith("ERROR_"):
+                        st.success(f"✅ Rekomendasi dihasilkan oleh {getattr(generator, 'llm_used', provider)}.")
                     else:
-                        st.warning(f"⚠️ {provider.capitalize()} gagal: {generator.llm_error}. "
+                        reason = getattr(generator, "llm_error", None) or llm_text
+                        llm_text = None
+                        st.warning(f"⚠️ {provider.capitalize()} gagal: {reason}. "
                                    "Laporan memakai Playbook sebagai cadangan.")
 
                 # 6. Ekspor Laporan Word
