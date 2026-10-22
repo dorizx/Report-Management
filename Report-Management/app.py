@@ -8,7 +8,8 @@ from jmeter_report_generator import JMeterReportGenerator, ReportParameters
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_PARAMS = os.path.join(BASE_DIR, "report_parameters.md")
 
-st.set_page_config(page_title="JMeter Report Generator", page_icon="📊", layout="centered")
+# Ikon dihapus sesuai preferensi Anda
+st.set_page_config(page_title="JMeter Report Generator", layout="centered")
 
 # --------------------------------------------------------------------------- #
 # Tema Neo Brutalism (Didominasi Biru, Border Hitam, Hard Shadow, Space Grotesk)
@@ -16,16 +17,15 @@ st.set_page_config(page_title="JMeter Report Generator", page_icon="📊", layou
 st.markdown(
     """
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700;800&display=swap');
 
-    .stApp {
-        background-color: #F4F5F7 !important;
-    }
-
-      /* Global Typography */
-      html, body, [class*="css"], .stMarkdown {
+      /* Global Typography & Background Override */
+      .stApp {
+          background-color: #F4F5F7 !important;
+      }
+      html, body, [class*="css"], .stMarkdown, p, span {
           font-family: 'Space Grotesk', sans-serif !important;
-          color: #000000;
+          color: #000000 !important;
       }
 
       /* Sembunyikan elemen bawaan Streamlit yang tidak perlu */
@@ -34,24 +34,44 @@ st.markdown(
       .block-container {padding-top: 3rem; padding-bottom: 4rem; max-width: 740px;}
 
       /* Header & Teks */
-      .eyebrow {font-size: 1rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #0055FF; margin-bottom: 0px;}
-      h1 {font-family: 'Space Grotesk', sans-serif !important; font-size: 2.8rem !important; font-weight: 800 !important; color: #000 !important; text-transform: uppercase; border-bottom: 5px solid #000; padding-bottom: 0.5rem; margin-bottom: 1.5rem; letter-spacing: -1px;}
-      .lead {font-size: 1.05rem; font-weight: 600; background: #E0E7FF; padding: 1rem 1.2rem; border: 3px solid #000; box-shadow: 4px 4px 0px #000; border-radius: 6px; margin-bottom: 2rem;}
+      .eyebrow {font-size: 1rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #0055FF !important; margin-bottom: 0px;}
+      h1 {font-family: 'Space Grotesk', sans-serif !important; font-size: 2.8rem !important; font-weight: 800 !important; color: #000000 !important; text-transform: uppercase; border-bottom: 5px solid #000; padding-bottom: 0.5rem; margin-bottom: 1.5rem; letter-spacing: -1px;}
+      .lead {font-size: 1.05rem; font-weight: 600; background: #E0E7FF; padding: 1rem 1.2rem; border: 3px solid #000; box-shadow: 4px 4px 0px #000; border-radius: 6px; margin-bottom: 2rem; color: #000000 !important;}
       
       /* Section Badge */
-      .section {font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #FFF; background-color: #0055FF; display: inline-block; padding: 0.4rem 1rem; border: 3px solid #000; box-shadow: 3px 3px 0px #000; border-radius: 6px; margin: 2rem 0 1rem 0;}
+      .section {font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #FFFFFF !important; background-color: #0055FF; display: inline-block; padding: 0.4rem 1rem; border: 3px solid #000; box-shadow: 3px 3px 0px #000; border-radius: 6px; margin: 2rem 0 1rem 0;}
 
-      /* Input, Expander, File Uploader */
+      /* PERBAIKAN: Input, Expander, File Uploader */
       [data-testid="stFileUploaderDropzone"],
       [data-testid="stExpander"],
       [data-baseweb="input"], [data-baseweb="select"] > div,
-      [data-baseweb="number-input"] > div {
-          border: 3px solid #000 !important;
+      [data-baseweb="number-input"] > div,
+      [data-baseweb="base-input"] {
+          border: 3px solid #000000 !important;
           border-radius: 6px !important;
-          box-shadow: 4px 4px 0px #000 !important;
+          box-shadow: 4px 4px 0px #000000 !important;
           background-color: #FFFFFF !important;
           transition: all 0.2s ease;
       }
+      
+      /* PERBAIKAN: Teks di dalam input box */
+      [data-baseweb="input"] input, 
+      [data-baseweb="number-input"] input,
+      [data-testid="stFileUploaderDropzone"] div {
+          background-color: #FFFFFF !important;
+          color: #000000 !important;
+          -webkit-text-fill-color: #000000 !important;
+          font-weight: 600 !important;
+      }
+      
+      /* PERBAIKAN: Label judul input (Nama Proyek, dll) dan Radio Button */
+      label[data-testid="stWidgetLabel"] p,
+      [data-testid="stRadio"] p,
+      [data-testid="stRadio"] span {
+          color: #000000 !important;
+          font-weight: 700 !important;
+      }
+
       [data-testid="stFileUploaderDropzone"] { border-style: dashed !important; background-color: #F0F4FF !important;}
       [data-testid="stExpander"] { background-color: #FAFAFA !important; }
       
@@ -68,7 +88,8 @@ st.markdown(
           border-radius: 6px !important; 
           box-shadow: 5px 5px 0px #000 !important; 
           background-color: #0055FF !important; 
-          color: #FFF !important; 
+          color: #FFFFFF !important; 
+          -webkit-text-fill-color: #FFFFFF !important;
           font-family: 'Space Grotesk', sans-serif !important;
           font-weight: 700 !important; 
           font-size: 1.1rem;
@@ -79,11 +100,12 @@ st.markdown(
       [data-testid="stButton"] button:hover, [data-testid="stDownloadButton"] button:hover {
           transform: translate(3px, 3px) !important;
           box-shadow: 2px 2px 0px #000 !important;
-          color: #FFF !important;
+          color: #FFFFFF !important;
       }
       [data-testid="stButton"] button:disabled {
           background-color: #E5E7EB !important;
           color: #9CA3AF !important;
+          -webkit-text-fill-color: #9CA3AF !important;
           box-shadow: none !important;
           transform: none !important;
           border-color: #9CA3AF !important;
@@ -100,23 +122,23 @@ st.markdown(
           box-shadow: 4px 4px 0px #000; 
           padding: 16px;
       }
-      [data-testid="stMetricLabel"] p {font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #000;}
-      [data-testid="stMetricValue"] {font-size: 1.8rem; font-weight: 800; color: #0055FF;}
+      [data-testid="stMetricLabel"] p {font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #000000 !important;}
+      [data-testid="stMetricValue"] {font-size: 1.8rem; font-weight: 800; color: #0055FF !important;}
 
       /* Pills & Rows */
       .pill { display: inline-block; padding: 0.4rem 1rem; border-radius: 4px; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; border: 3px solid #000; box-shadow: 3px 3px 0px #000;}
-      .pill.ok { background: #4ADE80; color: #000; }  
-      .pill.bad { background: #FF4D4D; color: #000; }
+      .pill.ok { background: #4ADE80; color: #000000 !important; }  
+      .pill.bad { background: #FF4D4D; color: #000000 !important; }
       
-      .row { display: flex; gap: 1rem; align-items: center; padding: 0.8rem; border: 3px solid #000; background: #FFF; box-shadow: 3px 3px 0px #000; margin-bottom: 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.95rem;}
+      .row { display: flex; gap: 1rem; align-items: center; padding: 0.8rem; border: 3px solid #000; background: #FFFFFF; box-shadow: 3px 3px 0px #000; margin-bottom: 0.75rem; border-radius: 6px; font-weight: 600; font-size: 0.95rem;}
       
       .sev { flex: 0 0 5rem; text-align: center; padding: 0.2rem 0; border: 2px solid #000; border-radius: 4px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; box-shadow: 2px 2px 0px #000;}
-      .sev.Critical { background: #FF4D4D; color: #000; } 
-      .sev.High { background: #FFA500; color: #000; } 
-      .sev.Medium { background: #FCD34D; color: #000; } 
-      .sev.Low { background: #E2E8F0; color: #000; }
+      .sev.Critical { background: #FF4D4D; color: #000000 !important; } 
+      .sev.High { background: #FFA500; color: #000000 !important; } 
+      .sev.Medium { background: #FCD34D; color: #000000 !important; } 
+      .sev.Low { background: #E2E8F0; color: #000000 !important; }
       
-      .muted {color: #4B5563; font-size: 0.85rem; font-weight: 600;}
+      .muted {color: #4B5563 !important; font-size: 0.85rem; font-weight: 600;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -262,7 +284,7 @@ if res:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Request", f"{g['total_req']:,}")
-    m2.metric("P95", f"{g['p95']:.0f} ms", help=f"Target ≤ {res['max_p95']} ms")
+    m2.metric("P95", f"{g['p95']:.0f} ms", help=f"Target <= {res['max_p95']} ms")
     m3.metric("Error", f"{g['error_rate']:.2f}%")
     m4.metric("TPS aktif", f"{g['tps']:.2f}")
 
